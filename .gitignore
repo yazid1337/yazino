@@ -1,0 +1,7 @@
+.idea/
+cmake-build-release
+cmake-build-debug
+build-arm64
+src/db/db.sqlite
+cmake/toolchain-arm64.cmake
+.env
