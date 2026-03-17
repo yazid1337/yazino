@@ -77,7 +77,6 @@ void User::deposit(const cpp_int& amount) {
         throw UserException::InvalidAmountException();
     }
 
-
     if (balance_ < amount) {
         throw UserException::InsufficientFundsException();
     }
@@ -92,12 +91,12 @@ void User::transfer(const cpp_int& amount, User& target) {
         throw UserException::InvalidAmountException();
     }
 
-    if (balance_ < amount) {
-        throw UserException::InsufficientFundsException();
-    }
-
     if (target.get_id() == id_) {
         throw UserException::InvalidUserException();
+    }
+
+    if (balance_ < amount) {
+        throw UserException::InsufficientFundsException();
     }
 
     try {

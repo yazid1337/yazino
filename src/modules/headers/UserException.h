@@ -21,32 +21,32 @@ namespace UserException {
 
     class InsufficientFundsException : public UserException {
     public:
-        explicit InsufficientFundsException() : UserException("") {}
+        explicit InsufficientFundsException() : UserException("Insufficient funds !") {}
     };
 
     class InvalidAmountException : public UserException {
     public:
-        explicit InvalidAmountException() : UserException("") {}
+        explicit InvalidAmountException() : UserException("Invalid amount !") {}
     };
 
     class MissingAmountException : public UserException {
     public:
-        explicit MissingAmountException() : UserException("") {}
+        explicit MissingAmountException() : UserException("Missing amount !") {}
     };
 
     class InvalidUserException : public UserException {
     public:
-        explicit InvalidUserException() : UserException("") {}
+        explicit InvalidUserException() : UserException("Invalid user !") {}
     };
 
     class UserAlreadyExistsException : public UserException {
     public:
-        explicit UserAlreadyExistsException() : UserException("") {}
+        explicit UserAlreadyExistsException() : UserException("User already exists !") {}
     };
 
     class UserNotFoundException : public UserException {
     public:
-        explicit UserNotFoundException() : UserException("") {}
+        explicit UserNotFoundException() : UserException("User not found !") {}
     };
 
 }

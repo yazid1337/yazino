@@ -31,6 +31,7 @@ private:
     dpp::snowflake id_;
     cpp_int balance_;
     cpp_int bank_;
+    /* TODO: ajouter le type d'utilisateur avec un type enum class ? (0 = user classique, 1 = owner, etc). */
 };
 
 

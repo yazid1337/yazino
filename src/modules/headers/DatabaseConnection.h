@@ -4,7 +4,6 @@
 
 #ifndef YAZINO_BOT_DATABASE_H
 #define YAZINO_BOT_DATABASE_H
-#include <iostream>
 #include <sqlite3.h>
 #include <sstream>
 #include <stdexcept>
@@ -24,6 +23,7 @@ struct DatabaseConnection
     DatabaseConnection(const DatabaseConnection &) = delete;
     DatabaseConnection & operator = (const DatabaseConnection &) = delete;
 
+    /*
     void create_tables() {
         char* err_msg;
         const char* sql = "CREATE TABLE USERS("
@@ -38,13 +38,14 @@ struct DatabaseConnection
             std::cout << "table users made successfully";
         }
     }
+    */
 
-    User get_user(dpp::snowflake id) const {
+    const char *get_token() const {
         std::stringstream req;
-        req << "SELECT * FROM USERS WHERE id = " << std::to_string(id);
+        req << "SELECT * FROM CONFIGURATION WHERE TYPE='token'";
 
         sqlite3_stmt *stmt = nullptr;
-        User user{};
+        const char *text_ptr = nullptr;
 
         if (sqlite3_prepare_v2(db_, req.str().c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
             throw std::runtime_error("Could not prepare statement");
@@ -52,11 +53,63 @@ struct DatabaseConnection
 
         int step_result = sqlite3_step(stmt);
         if (step_result == SQLITE_ROW) {
-            user.set_id(dpp::snowflake(sqlite3_column_int(stmt, 0)));
-            user.set_balance(cpp_int(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1))));
-            user.set_bank(cpp_int(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2))));
+            const void *raw_buffer = nullptr;
+            raw_buffer = sqlite3_column_text(stmt, 1);
+            text_ptr = static_cast<const char*>(raw_buffer);
         } else if (step_result == SQLITE_DONE) {
-            throw UserException("User not found");
+            throw std::runtime_error("No token specified in the DB!");
+        }
+
+        return text_ptr;
+    }
+
+    char get_prefix() const {
+        std::stringstream req;
+        req << "SELECT * FROM CONFIGURATION WHERE TYPE='prefix'";
+
+        sqlite3_stmt *stmt = nullptr;
+        const char *text_ptr = nullptr;
+
+        if (sqlite3_prepare_v2(db_, req.str().c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+            throw std::runtime_error("Could not prepare statement");
+        }
+
+        int step_result = sqlite3_step(stmt);
+        if (step_result == SQLITE_ROW) {
+            const void *raw_buffer = nullptr;
+            raw_buffer = sqlite3_column_text(stmt, 1);
+            text_ptr = static_cast<const char*>(raw_buffer);
+        } else if (step_result == SQLITE_DONE) {
+            throw std::runtime_error("No prefix specified in the DB!");
+        }
+
+        return text_ptr[0];
+    }
+
+    User get_user(const dpp::snowflake& id) const {
+        const char *req = "SELECT * FROM USERS WHERE ID = ?";
+
+        sqlite3_stmt *stmt = nullptr;
+        User user{};
+
+        if (sqlite3_prepare_v2(db_, req, -1, &stmt, nullptr) != SQLITE_OK) {
+            throw std::runtime_error("Could not prepare statement");
+        }
+
+        sqlite3_bind_int64(stmt, 1, id);
+
+        int step_result = sqlite3_step(stmt);
+
+        if (step_result == SQLITE_ROW) {
+            user.set_id(dpp::snowflake(sqlite3_column_int64(stmt, 0)));
+            const void *raw_buffer = sqlite3_column_text(stmt, 1);
+            const char *text_ptr = static_cast<const char*>(raw_buffer);
+            user.set_balance(cpp_int(text_ptr));
+            raw_buffer = sqlite3_column_text(stmt, 2);
+            text_ptr = static_cast<const char*>(raw_buffer);
+            user.set_bank(cpp_int(text_ptr));
+        } else if (step_result == SQLITE_DONE) {
+            throw UserException::UserNotFoundException();
         } else {
             throw std::runtime_error("Could not step statement");
         }
@@ -84,21 +137,77 @@ struct DatabaseConnection
         sqlite3_finalize(stmt);
     }
 
-    std::map<dpp::snowflake, User> load_users() {
-        std::stringstream req;
-        req << "SELECT * FROM USERS";
+    void save_user(const User& user) {
+        std::string req = "INSERT OR REPLACE INTO USERS VALUES (?, ?, ?, ?)";
         sqlite3_stmt *stmt = nullptr;
-        std::map<dpp::snowflake, User> users;
-        if (sqlite3_prepare_v2(db_, req.str().c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        if (sqlite3_prepare_v2(db_, req.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
             throw std::runtime_error("Could not prepare statement");
         }
-        while (sqlite3_step(stmt) == SQLITE_ROW) {
-            users[dpp::snowflake(sqlite3_column_int64(stmt, 0))] = User(dpp::snowflake(sqlite3_column_int64(stmt, 0)));
-            users[dpp::snowflake(sqlite3_column_int64(stmt, 0))].set_balance(cpp_int(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1))));
-            users[dpp::snowflake(sqlite3_column_int64(stmt, 0))].set_bank(cpp_int(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2))));
-        }
+
+        sqlite3_bind_int64(stmt, 1, user.get_id());
+        sqlite3_bind_text(stmt, 2, user.get_balance().str().c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 3, user.get_bank().str().c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int(stmt, 4, 0);
+
+        sqlite3_step(stmt);
+
         sqlite3_finalize(stmt);
-        return users;
+    }
+
+    bool is_owner(const dpp::snowflake& id) const {
+        /* TODO: essayer de changer ça en const char* pour économiser l'overhead d'un std::string */
+        const std::string req = "SELECT TYPE FROM USERS WHERE ID = ?";
+
+        sqlite3_stmt *stmt = nullptr;
+
+        if (sqlite3_prepare_v2(db_, req.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+            throw std::runtime_error("Could not prepare statement");
+        }
+
+        sqlite3_bind_int64(stmt, 1, id);
+
+        bool result = false;
+
+        int step_result = sqlite3_step(stmt);
+        if (step_result == SQLITE_ROW) {
+            if (sqlite3_column_int(stmt, 0) == 1) {
+                result = true;
+            }
+        } else if (step_result == SQLITE_DONE) {
+            throw UserException::UserNotFoundException();
+        } else {
+            throw std::runtime_error("Could not step statement");
+        }
+
+        sqlite3_finalize(stmt);
+
+        return result;
+    }
+
+    bool exists(const dpp::snowflake& id) const {
+        const std::string req = "SELECT COUNT(*) FROM USERS WHERE ID = ?";
+        sqlite3_stmt *stmt = nullptr;
+
+        if (sqlite3_prepare_v2(db_, req.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+            throw std::runtime_error("Could not prepare statement");
+        }
+
+        int bind_result = sqlite3_bind_int64(stmt, 1, id);
+        if (bind_result != SQLITE_OK) {
+            sqlite3_finalize(stmt);
+            throw std::runtime_error("Could not bind parameter");
+        }
+
+        int step_result = sqlite3_step(stmt);
+        bool exists = false;
+
+        if (step_result == SQLITE_ROW) {
+            int count = sqlite3_column_int(stmt, 0);
+            exists = (count > 0);
+        }
+
+        sqlite3_finalize(stmt);
+        return exists;
     }
 
 private:

@@ -1,0 +1,1 @@
+1) Pour l'ergonomie, définir une couleur vert fluorescent pour un 'succès' et le rouge fluorescent pour un 'échec'
